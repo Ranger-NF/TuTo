@@ -1,4 +1,4 @@
-# CodeRacer: The Ultimate Real-time Coding Mentorship Platform
+# TuTo: Teach Coding Interactively
 
 <p align="center">
   <img src="docs/logo.jpg" alt="CodeRacer" width="200"/>
