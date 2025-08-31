@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import useWebSocket from '../hooks/useWebSocket';
 import Editor from '@monaco-editor/react';
@@ -16,7 +16,6 @@ const LearnerPage = () => {
     const [evaluation, setEvaluation] = useState(null);
     const [learnerId, setLearnerId] = useState(null);
     const [gravatar, setGravatar] = useState('');
-    const [showEvaluation, setShowEvaluation] = useState(false);
     const [isEditorReadOnly, setEditorReadOnly] = useState(true);
     const [language, setLanguage] = useState('javascript');
     const [statusMessage, setStatusMessage] = useState('Waiting for host to start the session...');
@@ -25,9 +24,12 @@ const LearnerPage = () => {
     const [finalLeaderboard, setFinalLeaderboard] = useState([]);
 
 
+    const joinSent = useRef(false);
+
     useEffect(() => {
-        if (isConnected) {
+        if (isConnected && !joinSent.current) {
             sendMessage({ type: 'joinSession', payload: { sessionId, role: 'learner', name } });
+            joinSent.current = true;
         }
     }, [isConnected, sessionId, name, sendMessage]);
 
@@ -52,7 +54,6 @@ const LearnerPage = () => {
                     setTask(lastMessage.payload.content);
                     setLanguage(lastMessage.payload.language || 'javascript');
                     setEvaluation(null);
-                    setShowEvaluation(false);
                     setEditorReadOnly(false); // Re-enable editor for new task
                     setSubmittedTask(null); // Reset submitted task
                     break;
@@ -76,7 +77,6 @@ const LearnerPage = () => {
                     break;
                 case 'evaluationResult':
                     setEvaluation(lastMessage.payload);
-                    setShowEvaluation(true);
                     break;
                 case 'codingEnabled':
                     setEditorReadOnly(false);
@@ -90,7 +90,6 @@ const LearnerPage = () => {
                     setCode('// Start coding here...');
                     setTask('');
                     setEvaluation(null);
-                    setShowEvaluation(false);
                     setEditorReadOnly(true);
                     setStatusMessage('The session has been reset by the host.');
                     setTimeRemaining(null);
@@ -102,6 +101,12 @@ const LearnerPage = () => {
             }
         }
     }, [messages, sessionId, name, sendMessage]);
+
+    useEffect(() => {
+        if (evaluation) {
+            setStatusMessage('Evaluation complete!');
+        }
+    }, [evaluation]);
 
     useEffect(() => {
         if (countdown === null) return;
@@ -182,22 +187,17 @@ const LearnerPage = () => {
                         </div>
                     </div>
                 </div>
-                {showEvaluation && (
+                {evaluation && (
                     <div className={`evaluation-panel ${evaluation && (evaluation.score > 7 ? 'success' : (evaluation.score > 4 ? 'warning' : 'error'))}`}>
-                        <button className="close-panel" onClick={() => setShowEvaluation(false)}>
-                            <FaTimes />
-                        </button>
                         <h3>Evaluation Result</h3>
-                        {evaluation && (
-                            <>
-                                <div className="score-display">
-                                    <span className="score">{evaluation.score}</span>/10
-                                </div>
-                                <p><strong>Feedback:</strong></p>
-                                <p>{evaluation.feedback}</p>
-                                {evaluation.error && <pre className="error-log">{evaluation.error}</pre>}
-                            </>
-                        )}
+                        <>
+                            <div className="score-display">
+                                <span className="score">{evaluation.score}</span>/10
+                            </div>
+                            <p><strong>Feedback:</strong></p>
+                            <p>{evaluation.feedback}</p>
+                            {evaluation.error && <pre className="error-log">{evaluation.error}</pre>}
+                        </>
                     </div>
                 )}
             </div>

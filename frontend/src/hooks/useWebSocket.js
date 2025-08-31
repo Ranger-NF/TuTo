@@ -6,7 +6,7 @@ const useWebSocket = () => {
     if (!context) {
         throw new Error('useWebSocket must be used within a WebSocketProvider');
     }
-    return { ...context, reconnect: context.reconnect };
+    return context;
 };
 
 export default useWebSocket;

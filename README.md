@@ -1,6 +1,23 @@
-# Real-time Coding Mentorship Platform
+# CodeRacer: The Ultimate Real-time Coding Mentorship Platform
 
-This is a full-stack web application for interactive coding mentorship, built with React and Node.js.
+<p align="center">
+  <img src="docs/logo.jpg" alt="CodeRacer" width="200"/>
+</p>
+
+<p align="center">
+  A full-stack web application for interactive coding mentorship, built with React and Node.js.
+</p>
+
+## Table of Contents
+
+- [Features](#features)
+- [Technical Stack](#technical-stack)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+  - [Running the Application](#running-the-application)
+- [Deployment](#deployment)
 
 ## Features
 

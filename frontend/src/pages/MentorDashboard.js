@@ -21,6 +21,7 @@ const MentorDashboard = () => {
     const [displaySessionId, setDisplaySessionId] = useState(paramSessionId);
     const [isCodingEnabled, setIsCodingEnabled] = useState(false);
     const [quizState, setQuizState] = useState('idle');
+    const [isRoundRunning, setIsRoundRunning] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState(null);
     const [taskContent, setTaskContent] = useState('');
     const [taskLanguage, setTaskLanguage] = useState('javascript');
@@ -88,9 +89,6 @@ const MentorDashboard = () => {
                     setSubmittedCode(prev => new Set(prev).add(lastMessage.payload.learnerId));
                     setLearners(prev => prev.map(l => l.id === lastMessage.payload.learnerId ? { ...l, status: 'submitted' } : l));
                     break;
-                case 'evaluationResult':
-                     setLearners(prev => prev.map(l => l.id === lastMessage.payload.learnerId ? { ...l, status: lastMessage.payload.isCorrect ? 'correct' : 'error' } : l));
-                     break;
                case 'quizRoundStartedConfirmation':
                    setQuizState('running');
                    break;
@@ -147,10 +145,12 @@ const MentorDashboard = () => {
     };
 
     const handleToggleRound = () => {
-        if (quizState === 'running') {
-            handleStopRound();
-        } else {
+        const newRoundState = !isRoundRunning;
+        setIsRoundRunning(newRoundState);
+        if (newRoundState) {
             handleStartRound();
+        } else {
+            handleStopRound();
         }
     };
 
@@ -216,24 +216,27 @@ const MentorDashboard = () => {
                                 value={taskContent}
                                 onChange={(e) => setTaskContent(e.target.value)}
                                 placeholder="Enter task description..."
+                                disabled={isRoundRunning}
                             />
                             <input
                                 type="text"
                                 value={taskLanguage}
                                 onChange={(e) => setTaskLanguage(e.target.value)}
                                 placeholder="Language (e.g., javascript)"
+                                disabled={isRoundRunning}
                             />
                             <input
                                 type="number"
                                 value={taskTimeLimit}
                                 onChange={(e) => setTaskTimeLimit(e.target.value)}
                                 placeholder="Time limit in seconds"
+                                disabled={isRoundRunning}
                             />
-                            <button onClick={handleAssignTask}>Assign Task</button>
+                            <button onClick={handleAssignTask} disabled={isRoundRunning}>Assign Task</button>
                         </div>
                         <div className="quiz-controls">
-                            <button onClick={handleToggleRound} className={quizState === 'running' ? "stop-round-btn" : "start-round-btn"}>
-                                {quizState === 'running' ? 'Stop Round' : 'Start Round'}
+                            <button onClick={handleToggleRound} className={isRoundRunning ? "stop-round-btn" : "start-round-btn"}>
+                                {isRoundRunning ? 'Stop Round' : 'Start Round'}
                             </button>
                             <button onClick={handleResetSession} className="reset-session-btn">
                                 Reset
@@ -253,7 +256,7 @@ const MentorDashboard = () => {
                         </div>
                         <div className="code-preview">
                             <Editor
-                                height="100px"
+                                height="100%"
                                 language={learner.language || 'javascript'}
                                 value={learner.code}
                                 theme="vs-dark"
