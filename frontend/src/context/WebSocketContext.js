@@ -5,7 +5,6 @@ export const WebSocketContext = createContext(null);
 export const WebSocketProvider = ({ children }) => {
     const [messages, setMessages] = useState([]);
     const [isConnected, setIsConnected] = useState(false);
-    const [sessionId, setSessionId] = useState(null);
     const ws = useRef(null);
 
    const shouldReconnect = useRef(true);
@@ -25,16 +24,12 @@ export const WebSocketProvider = ({ children }) => {
 
        ws.current.onmessage = (event) => {
            const message = JSON.parse(event.data);
-           if (message.type === 'session') {
-               setSessionId(message.sessionId);
-           }
            setMessages(prevMessages => [...prevMessages, message]);
        };
 
        ws.current.onclose = () => {
            console.log('WebSocket disconnected');
            setIsConnected(false);
-           setSessionId(null);
            if (shouldReconnect.current) {
                setTimeout(reconnect, 5000); // Reconnect after 5 seconds
            }
@@ -68,8 +63,7 @@ export const WebSocketProvider = ({ children }) => {
         sendMessage,
         isConnected,
         reconnect,
-        sessionId,
-    }), [messages, sendMessage, isConnected, reconnect, sessionId]);
+    }), [messages, sendMessage, isConnected, reconnect]);
 
     return (
         <WebSocketContext.Provider value={contextValue}>

@@ -35,8 +35,6 @@ const getGravatarUrl = (email) => {
 
 wss.on('connection', ws => {
     console.log('Client connected');
-    const sessionId = generateUniqueId();
-    ws.send(JSON.stringify({ type: 'session', sessionId }));
 
     ws.on('message', async message => {
         try {
@@ -55,7 +53,8 @@ wss.on('connection', ws => {
                     mentorWs: ws,
                     learners: new Map(),
                     tasks: new Map(), // Map<taskId, { content: string, assignedTo: string[] }>
-                    leaderboard: [] // { learnerId, correctness, speed }
+                    leaderboard: [], // { learnerId, correctness, speed }
+                    isCodingEnabled: true // Default to enabled
                 });
                 ws.send(JSON.stringify({ type: 'sessionCreated', payload: { sessionId } }));
                 console.log(`Session created: ${sessionId}`);
@@ -66,7 +65,7 @@ wss.on('connection', ws => {
                 const session = sessions.get(sessionId);
 
                 if (!session) {
-                    ws.send(JSON.stringify({ type: 'error', payload: { message: 'Session not found' } }));
+                    ws.send(JSON.stringify({ type: 'sessionNotFound', payload: { error: 'Session not found' } }));
                     return;
                 }
 
@@ -85,18 +84,42 @@ wss.on('connection', ws => {
                         task: learner.task,
                         gravatar: learner.gravatar
                     }));
-                    ws.send(JSON.stringify({ type: 'sessionState', payload: { learners: learnersData, tasks: Array.from(session.tasks.values()), leaderboard: session.leaderboard } }));
+                    ws.send(JSON.stringify({ type: 'sessionState', payload: { learners: learnersData, tasks: Array.from(session.tasks.values()), leaderboard: session.leaderboard, isCodingEnabled: session.isCodingEnabled } }));
                     console.log(`Mentor joined session: ${sessionId}`);
                 } else if (role === 'learner') {
-                    const learnerId = generateUniqueId();
-                    const gravatar = getGravatarUrl(name + '@example.com'); // Using name as a substitute for email
-                    session.learners.set(learnerId, { ws, name, code: '', task: '', gravatar });
-                    ws.send(JSON.stringify({ type: 'sessionJoined', payload: { sessionId, role, learnerId, gravatar } }));
-                    // Notify mentor about new learner
-                    if (session.mentorWs) {
-                        session.mentorWs.send(JSON.stringify({ type: 'learnerJoined', payload: { id: learnerId, name, code: '', task: '', gravatar } }));
+                    let learnerId;
+                    let existingLearner = null;
+
+                    // Check if a learner with the same name already exists
+                    for (const [id, learner] of session.learners.entries()) {
+                        if (learner.name === name) {
+                            existingLearner = learner;
+                            learnerId = id;
+                            break;
+                        }
                     }
-                    console.log(`Learner ${name} joined session: ${sessionId}`);
+
+                    if (existingLearner) {
+                        // Update WebSocket connection for returning learner
+                        existingLearner.ws = ws;
+                        console.log(`Learner ${name} reconnected to session: ${sessionId}`);
+                        ws.send(JSON.stringify({ type: 'sessionJoined', payload: { sessionId, role, learnerId, gravatar: existingLearner.gravatar, isCodingEnabled: session.isCodingEnabled } }));
+                        // Notify mentor about the re-connection
+                        if (session.mentorWs) {
+                            session.mentorWs.send(JSON.stringify({ type: 'learnerReconnected', payload: { id: learnerId, name, code: existingLearner.code, task: existingLearner.task, gravatar: existingLearner.gravatar } }));
+                        }
+                    } else {
+                        // New learner
+                        learnerId = generateUniqueId();
+                        const gravatar = getGravatarUrl(name + '@example.com'); // Using name as a substitute for email
+                        session.learners.set(learnerId, { ws, name, code: '', task: '', gravatar });
+                        ws.send(JSON.stringify({ type: 'sessionJoined', payload: { sessionId, role, learnerId, gravatar, isCodingEnabled: session.isCodingEnabled } }));
+                        // Notify mentor about new learner
+                        if (session.mentorWs) {
+                            session.mentorWs.send(JSON.stringify({ type: 'learnerJoined', payload: { id: learnerId, name, code: '', task: '', gravatar } }));
+                        }
+                        console.log(`Learner ${name} joined session: ${sessionId}`);
+                    }
                 }
                 break;
             }
@@ -119,6 +142,11 @@ wss.on('connection', ws => {
                     // Notify mentor about code submission
                     if (session.mentorWs) {
                         session.mentorWs.send(JSON.stringify({ type: 'codeSubmitted', payload: { learnerId, code, task } }));
+                    }
+                    // Disable coding for the learner after submission
+                    const learner = session.learners.get(learnerId);
+                    if (learner) {
+                        learner.ws.send(JSON.stringify({ type: 'codingDisabled' }));
                     }
                 }
                 break;
@@ -252,27 +280,23 @@ wss.on('connection', ws => {
                 }
                 break;
             }
-            case 'startCoding': {
-                const { sessionId, learnerId, secret } = payload;
-                if (secret !== process.env.MENTOR_SECRET_KEY) return;
-                const session = sessions.get(sessionId);
-                if (session && session.mentorWs === ws) {
-                    const learner = session.learners.get(learnerId);
-                    if (learner) {
-                        learner.ws.send(JSON.stringify({ type: 'codingEnabled' }));
-                    }
+            case 'toggleCoding': {
+                const { sessionId, secret } = payload;
+                if (secret !== process.env.MENTOR_SECRET_KEY) {
+                    ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
+                    return;
                 }
-                break;
-            }
-            case 'stopCoding': {
-                const { sessionId, learnerId, secret } = payload;
-                if (secret !== process.env.MENTOR_SECRET_KEY) return;
                 const session = sessions.get(sessionId);
                 if (session && session.mentorWs === ws) {
-                    const learner = session.learners.get(learnerId);
-                    if (learner) {
-                        learner.ws.send(JSON.stringify({ type: 'codingDisabled' }));
-                    }
+                    session.isCodingEnabled = !session.isCodingEnabled;
+                    const message = { type: session.isCodingEnabled ? 'codingEnabled' : 'codingDisabled' };
+                    session.learners.forEach(learner => {
+                        if (learner.ws) {
+                            learner.ws.send(JSON.stringify(message));
+                        }
+                    });
+                    // Also notify the mentor about the state change
+                    ws.send(JSON.stringify({ type: 'codingToggled', payload: { isCodingEnabled: session.isCodingEnabled } }));
                 }
                 break;
             }

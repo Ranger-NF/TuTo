@@ -3,6 +3,7 @@ import { useParams, useLocation } from 'react-router-dom';
 import useWebSocket from '../hooks/useWebSocket';
 import Editor from '@monaco-editor/react';
 import { FaPaperPlane, FaTimes } from 'react-icons/fa';
+import './LearnerPage.css';
 
 const LearnerPage = () => {
     const { sessionId } = useParams();
@@ -26,6 +27,9 @@ const LearnerPage = () => {
         }
     }, [isConnected, sessionId, name, sendMessage]);
 
+    const [submittedTask, setSubmittedTask] = useState(null);
+
+
     useEffect(() => {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage) {
@@ -34,6 +38,7 @@ const LearnerPage = () => {
                     if (lastMessage.payload.role === 'learner') {
                         setLearnerId(lastMessage.payload.learnerId);
                         setGravatar(lastMessage.payload.gravatar);
+                        setEditorReadOnly(!lastMessage.payload.isCodingEnabled);
                     }
                     break;
                 case 'taskAssigned':
@@ -41,6 +46,8 @@ const LearnerPage = () => {
                     setLanguage(lastMessage.payload.language || 'javascript');
                     setEvaluation(null);
                     setShowEvaluation(false);
+                    setEditorReadOnly(false); // Re-enable editor for new task
+                    setSubmittedTask(null); // Reset submitted task
                     break;
                 case 'evaluationResult':
                     setEvaluation(lastMessage.payload);
@@ -69,6 +76,8 @@ const LearnerPage = () => {
 
     const handleSubmit = () => {
         sendMessage({ type: 'submitCode', payload: { sessionId, learnerId, code, task } });
+        setSubmittedTask(task);
+        setEditorReadOnly(true);
     };
 
     return (
@@ -104,7 +113,7 @@ const LearnerPage = () => {
                                 theme="vs-dark"
                                 value={code}
                                 onChange={handleCodeChange}
-                                options={{ readOnly: isEditorReadOnly, minimap: { enabled: false } }}
+                                options={{ readOnly: isEditorReadOnly || submittedTask === task, minimap: { enabled: false } }}
                             />
                         </div>
                     </div>

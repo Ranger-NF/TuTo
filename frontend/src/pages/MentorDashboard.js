@@ -4,13 +4,14 @@ import useWebSocket from '../hooks/useWebSocket';
 import Editor from '@monaco-editor/react';
 import Leaderboard from '../components/Leaderboard';
 import { FaCrown, FaFileExport, FaFileImport, FaPaperPlane, FaTimes, FaUserSlash } from 'react-icons/fa';
+import './MentorDashboard.css';
 
 const MentorDashboard = () => {
     const { sessionId: paramSessionId } = useParams();
     const location = useLocation();
     const navigate = useNavigate();
     const { secret, action } = location.state || {};
-    const { messages, sendMessage, isConnected, sessionId } = useWebSocket();
+    const { messages, sendMessage, isConnected } = useWebSocket();
     const [learners, setLearners] = useState([]);
     const [selectedLearnerId, setSelectedLearnerId] = useState(null);
     const selectedLearner = learners.find(l => l.id === selectedLearnerId);
@@ -20,6 +21,7 @@ const MentorDashboard = () => {
     const [displaySessionId, setDisplaySessionId] = useState(paramSessionId);
     const [language, setLanguage] = useState('javascript');
     const [activeTask, setActiveTask] = useState(null);
+    const [isCodingEnabled, setIsCodingEnabled] = useState(true);
 
 
     useEffect(() => {
@@ -39,11 +41,15 @@ const MentorDashboard = () => {
                 case 'sessionCreated':
                     setDisplaySessionId(lastMessage.payload.sessionId);
                     window.history.replaceState(null, '', `/mentor/${lastMessage.payload.sessionId}`);
-                    sendMessage({ type: 'joinSession', payload: { sessionId: lastMessage.payload.sessionId, role: 'mentor', secret } });
+                    sendMessage({ type: 'joinSession', payload: { sessionId: lastMessage.payload.sessionId, role: 'mentor', secret: secret } });
                     break;
                 case 'sessionState':
                     setLearners(lastMessage.payload.learners || []);
                     setLeaderboard(lastMessage.payload.leaderboard || []);
+                    setIsCodingEnabled(lastMessage.payload.isCodingEnabled);
+                    break;
+                case 'codingToggled':
+                    setIsCodingEnabled(lastMessage.payload.isCodingEnabled);
                     break;
                 case 'authFailed':
                     alert(lastMessage.payload.error);
@@ -93,7 +99,7 @@ const MentorDashboard = () => {
 
     const handleEvaluateCode = () => {
         if (selectedLearner) {
-            sendMessage({ type: 'evaluateCode', payload: { sessionId, learnerId: selectedLearner.id, secret } });
+            sendMessage({ type: 'evaluateCode', payload: { sessionId: displaySessionId, learnerId: selectedLearner.id, secret } });
         }
     };
 
@@ -102,7 +108,7 @@ const MentorDashboard = () => {
         if (file) {
             const reader = new FileReader();
             reader.onload = (e) => {
-                sendMessage({ type: 'importSession', payload: { sessionId, fileContent: e.target.result, secret } });
+                sendMessage({ type: 'importSession', payload: { sessionId: displaySessionId, fileContent: e.target.result, secret } });
             };
             reader.readAsText(file);
         }
@@ -125,37 +131,41 @@ const MentorDashboard = () => {
                     <span>Session ID: {displaySessionId}</span>
                 </div>
                 <div className="header-controls">
-                    <label htmlFor="import-session" className="icon-button">
+                    <label htmlFor="import-session" className="icon-button" title="Import Session">
                         <FaFileImport />
                     </label>
                     <input id="import-session" type="file" onChange={handleImport} style={{ display: 'none' }} />
-                    <button className="icon-button" onClick={() => sendMessage({ type: 'exportSession', payload: { sessionId, secret } })}>
+                    <button className="icon-button" onClick={() => sendMessage({ type: 'exportSession', payload: { sessionId: displaySessionId, secret } })} title="Export Session">
                         <FaFileExport />
                     </button>
                 </div>
             </header>
             <div className="main-content">
+                <div className="sidebar left-sidebar">
+                    <Leaderboard learners={learners} leaderboard={leaderboard} />
+                </div>
                 <div className="code-editor-container">
                     {selectedLearner ? (
-                        <div style={{ height: '100%' }}>
-                            <Editor
-                                height="100%"
-                                language={language}
-                                theme="vs-dark"
-                                value={selectedLearner.code}
-                                options={{ readOnly: true, minimap: { enabled: false } }}
-                            />
-                        </div>
+                        <Editor
+                            height="100%"
+                            language={language}
+                            theme="vs-dark"
+                            value={selectedLearner.code}
+                            options={{ readOnly: true, minimap: { enabled: false } }}
+                        />
                     ) : (
                         <div className="placeholder-view">
-                            <h2>Select a learner to view their code</h2>
+                            <div>
+                                <h2>Select a learner</h2>
+                                <p>Click on a learner from the gallery below to view their code.</p>
+                            </div>
                         </div>
                     )}
                 </div>
-                <div className="sidebar">
+                <div className="sidebar right-sidebar">
                     <div className="task-assignment">
                         <h3>Assign Task</h3>
-                        <textarea value={task} onChange={e => setTask(e.target.value)} placeholder="Describe the task..." />
+                        <textarea value={task} onChange={e => setTask(e.target.value)} placeholder="Describe the task for the learners..." />
                         <div className="language-selector">
                             <label htmlFor="language">Language:</label>
                             <select id="language" value={language} onChange={e => setLanguage(e.target.value)}>
@@ -166,10 +176,10 @@ const MentorDashboard = () => {
                             </select>
                         </div>
                         <div className="task-buttons">
-                            <button onClick={() => handleAssignTask()} disabled={!selectedLearner || activeTask}>
+                            <button onClick={() => handleAssignTask()} disabled={!selectedLearner || !task.trim() || activeTask}>
                                 <FaPaperPlane /> Assign to Selected
                             </button>
-                            <button onClick={() => handleAssignTask(true)} disabled={activeTask}>
+                            <button onClick={() => handleAssignTask(true)} disabled={!task.trim() || activeTask}>
                                 <FaPaperPlane /> Assign to All
                             </button>
                         </div>
@@ -178,8 +188,6 @@ const MentorDashboard = () => {
                         <div className="learner-controls">
                             <h3>Controls for {selectedLearner.name}</h3>
                             <button onClick={handleEvaluateCode}>Evaluate Code</button>
-                            <button onClick={() => sendMessage({ type: 'startCoding', payload: { sessionId: displaySessionId, learnerId: selectedLearner.id, secret } })}>Start Coding</button>
-                            <button onClick={() => sendMessage({ type: 'stopCoding', payload: { sessionId: displaySessionId, learnerId: selectedLearner.id, secret } })}>Stop Coding</button>
                             <button className="control-button kick" onClick={() => sendMessage({ type: 'kickParticipant', payload: { sessionId: displaySessionId, participantId: selectedLearner.id, secret } })}>
                                 <FaTimes /> Kick
                             </button>
@@ -188,7 +196,12 @@ const MentorDashboard = () => {
                             </button>
                         </div>
                     )}
-                    <Leaderboard leaderboard={leaderboard} />
+                    <div className="global-controls">
+                        <h3>Global Controls</h3>
+                        <button onClick={() => sendMessage({ type: 'toggleCoding', payload: { sessionId: displaySessionId, secret } })}>
+                            {isCodingEnabled ? 'Disable' : 'Enable'} Coding for All
+                        </button>
+                    </div>
                 </div>
             </div>
             <div className="participant-gallery">
@@ -198,15 +211,15 @@ const MentorDashboard = () => {
                             {learner.gravatar && <img src={learner.gravatar} alt={learner.name} />}
                             <span>{learner.name}</span>
                             <span className={getStatusIndicator(learner)}></span>
-                            {submittedCode.has(learner.id) && <FaCrown title="Submitted" />}
+                            {submittedCode.has(learner.id) && <FaCrown title="Submitted" style={{ color: 'gold', marginLeft: 'auto' }} />}
                         </div>
-                        <div className="code-preview" style={{ backgroundColor: '#1e1e1e' }}>
+                        <div className="code-preview">
                             <Editor
                                 height="100px"
                                 language={learner.language || 'javascript'}
                                 value={learner.code}
                                 theme="vs-dark"
-                                options={{ readOnly: true, minimap: { enabled: false }, lineNumbers: 'off' }}
+                                options={{ readOnly: true, minimap: { enabled: false }, lineNumbers: 'off', scrollBeyondLastLine: false }}
                             />
                         </div>
                     </div>
