@@ -1,8 +1,10 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Access your API key as an environment variable (see "Set up your API key" above)
@@ -10,7 +12,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, path: '/ws' });
 
 const PORT = process.env.PORT || 3001;
 const SESSIONS_DIR = path.join(__dirname, 'sessions');
@@ -26,8 +28,15 @@ const sessions = new Map(); // Map<sessionId, { mentorWs: WebSocket, learners: M
 // Helper to generate unique IDs
 const generateUniqueId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
+const getGravatarUrl = (email) => {
+    const hash = crypto.createHash('md5').update(email.toLowerCase()).digest('hex');
+    return `https://www.gravatar.com/avatar/${hash}?d=identicon`;
+};
+
 wss.on('connection', ws => {
     console.log('Client connected');
+    const sessionId = generateUniqueId();
+    ws.send(JSON.stringify({ type: 'session', sessionId }));
 
     ws.on('message', async message => {
         try {
@@ -37,8 +46,8 @@ wss.on('connection', ws => {
             switch (type) {
                 case 'createSession': {
                 const { secret } = payload;
-                if (secret !== 'mentor_secret_key') { // Simple shared secret
-                    ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
+                if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
+                    ws.send(JSON.stringify({ type: 'authFailed', payload: { error: 'Unauthorized: Invalid secret' } }));
                     return;
                 }
                 const sessionId = generateUniqueId();
@@ -62,8 +71,8 @@ wss.on('connection', ws => {
                 }
 
                 if (role === 'mentor') {
-                    if (secret !== 'mentor_secret_key') { // Simple shared secret
-                        ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
+                    if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
+                        ws.send(JSON.stringify({ type: 'authFailed', payload: { error: 'Unauthorized: Invalid secret' } }));
                         return;
                     }
                     session.mentorWs = ws;
@@ -73,17 +82,19 @@ wss.on('connection', ws => {
                         id,
                         name: learner.name,
                         code: learner.code,
-                        task: learner.task
+                        task: learner.task,
+                        gravatar: learner.gravatar
                     }));
                     ws.send(JSON.stringify({ type: 'sessionState', payload: { learners: learnersData, tasks: Array.from(session.tasks.values()), leaderboard: session.leaderboard } }));
                     console.log(`Mentor joined session: ${sessionId}`);
                 } else if (role === 'learner') {
                     const learnerId = generateUniqueId();
-                    session.learners.set(learnerId, { ws, name, code: '', task: '' });
-                    ws.send(JSON.stringify({ type: 'sessionJoined', payload: { sessionId, role, learnerId } }));
+                    const gravatar = getGravatarUrl(name + '@example.com'); // Using name as a substitute for email
+                    session.learners.set(learnerId, { ws, name, code: '', task: '', gravatar });
+                    ws.send(JSON.stringify({ type: 'sessionJoined', payload: { sessionId, role, learnerId, gravatar } }));
                     // Notify mentor about new learner
                     if (session.mentorWs) {
-                        session.mentorWs.send(JSON.stringify({ type: 'learnerJoined', payload: { id: learnerId, name, code: '', task: '' } }));
+                        session.mentorWs.send(JSON.stringify({ type: 'learnerJoined', payload: { id: learnerId, name, code: '', task: '', gravatar } }));
                     }
                     console.log(`Learner ${name} joined session: ${sessionId}`);
                 }
@@ -101,9 +112,20 @@ wss.on('connection', ws => {
                 }
                 break;
             }
+            case 'submitCode': {
+                const { sessionId, learnerId, code, task } = payload;
+                const session = sessions.get(sessionId);
+                if (session && session.learners.has(learnerId)) {
+                    // Notify mentor about code submission
+                    if (session.mentorWs) {
+                        session.mentorWs.send(JSON.stringify({ type: 'codeSubmitted', payload: { learnerId, code, task } }));
+                    }
+                }
+                break;
+            }
             case 'assignTask': {
                 const { sessionId, taskId, content, learnerIds, secret } = payload;
-                if (secret !== 'mentor_secret_key') { // Simple shared secret
+                if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
                     ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
                     return;
                 }
@@ -124,7 +146,7 @@ wss.on('connection', ws => {
             }
             case 'kickParticipant': {
                 const { sessionId, participantId, secret } = payload;
-                if (secret !== 'mentor_secret_key') { // Simple shared secret
+                if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
                     ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
                     return;
                 }
@@ -145,7 +167,7 @@ wss.on('connection', ws => {
                 // For simplicity, banning will just kick and prevent rejoining for the current session instance.
                 // In a real app, this would involve persistent storage of banned IDs.
                 const { sessionId, participantId, secret } = payload;
-                if (secret !== 'mentor_secret_key') { // Simple shared secret
+                if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
                     ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
                     return;
                 }
@@ -167,7 +189,7 @@ wss.on('connection', ws => {
                 break;
             case 'exportSession': {
                 const { sessionId, secret } = payload;
-                if (secret !== 'mentor_secret_key') { // Simple shared secret
+                if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
                     ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
                     return;
                 }
@@ -178,7 +200,8 @@ wss.on('connection', ws => {
                             id,
                             name: learner.name,
                             code: learner.code,
-                            task: learner.task
+                            task: learner.task,
+                            gravatar: learner.gravatar
                         })),
                         tasks: Array.from(session.tasks.entries()),
                         leaderboard: session.leaderboard
@@ -198,7 +221,7 @@ wss.on('connection', ws => {
             }
             case 'importSession': {
                 const { sessionId, fileContent, secret } = payload;
-                if (secret !== 'mentor_secret_key') { // Simple shared secret
+                if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
                     ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
                     return;
                 }
@@ -217,7 +240,8 @@ wss.on('connection', ws => {
                         id,
                         name: learner.name,
                         code: learner.code,
-                        task: learner.task
+                        task: learner.task,
+                        gravatar: learner.gravatar
                     }));
                     ws.send(JSON.stringify({ type: 'sessionState', payload: { learners: learnersData, tasks: Array.from(newSession.tasks.values()), leaderboard: newSession.leaderboard } }));
                     console.log(`Session ${sessionId} imported.`);
@@ -269,7 +293,7 @@ wss.on('connection', ws => {
 
 async function handleEvaluateCode(ws, payload) {
     const { sessionId, learnerId, secret } = payload;
-    if (secret !== 'mentor_secret_key') { // Simple shared secret
+    if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
         ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
         return;
     }

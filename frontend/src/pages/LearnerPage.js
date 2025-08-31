@@ -7,11 +7,12 @@ const LearnerPage = () => {
     const { sessionId } = useParams();
     const location = useLocation();
     const name = new URLSearchParams(location.search).get('name');
-    const { messages, sendMessage, isConnected } = useWebSocket('ws://localhost:3001');
+    const { messages, sendMessage, isConnected } = useWebSocket();
     const [code, setCode] = useState('// Start coding here...');
     const [task, setTask] = useState('');
     const [evaluation, setEvaluation] = useState(null);
     const [learnerId, setLearnerId] = useState(null);
+    const [gravatar, setGravatar] = useState('');
 
     useEffect(() => {
         if (isConnected) {
@@ -26,6 +27,7 @@ const LearnerPage = () => {
                 case 'sessionJoined':
                     if(lastMessage.payload.role === 'learner') {
                         setLearnerId(lastMessage.payload.learnerId);
+                        setGravatar(lastMessage.payload.gravatar);
                     }
                     break;
                 case 'taskAssigned':
@@ -48,8 +50,11 @@ const LearnerPage = () => {
     };
 
     return (
-        <div>
-            <h1>Learner Page</h1>
+        <div className="learner-page-container">
+            <div>
+                {gravatar && <img src={gravatar} alt={name} width="30" height="30" />}
+                <h1>Learner Page for {name}</h1>
+            </div>
             <h2>Task: {task}</h2>
             <Editor
                 height="70vh"

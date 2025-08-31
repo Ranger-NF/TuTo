@@ -10,9 +10,11 @@ const HomePage = () => {
 
     const handleJoin = () => {
         if (role === 'mentor') {
-            // In a real app, you'd create a session and get an ID
-            // For now, we'll just navigate to a pre-determined session ID for simplicity
-            navigate(`/mentor/new-session?secret=${secret}`);
+            if (secret && sessionId) {
+                navigate(`/mentor/${sessionId}`, { state: { secret, action: 'join' } });
+            } else {
+                alert('Please enter a session ID and the mentor secret.');
+            }
         } else {
             if (sessionId && name) {
                 navigate(`/learner/${sessionId}?name=${name}`);
@@ -22,9 +24,17 @@ const HomePage = () => {
         }
     };
 
+    const handleCreateSession = () => {
+        if (secret) {
+            navigate(`/mentor/new-session`, { state: { secret, action: 'create' } });
+        } else {
+            alert('Please enter the mentor secret to create a session.');
+        }
+    };
+
     return (
         <div>
-            <h1>Coding Mentorship Platform</h1>
+            <h1>Tuto</h1>
             <div>
                 <label>
                     <input type="radio" value="learner" checked={role === 'learner'} onChange={() => setRole('learner')} />
@@ -43,9 +53,12 @@ const HomePage = () => {
             ) : (
                 <div>
                     <input type="password" placeholder="Enter Mentor Secret" value={secret} onChange={e => setSecret(e.target.value)} />
+                    <input type="text" placeholder="Enter Session ID to Join" value={sessionId} onChange={e => setSessionId(e.target.value)} />
+                     <button onClick={handleJoin}>Join Session</button>
+                    <button onClick={handleCreateSession}>Create New Session</button>
                 </div>
             )}
-            <button onClick={handleJoin}>Join Session</button>
+            {role === 'learner' && <button onClick={handleJoin}>Join Session</button>}
         </div>
     );
 };
