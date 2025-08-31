@@ -1,14 +1,36 @@
-.App {
-  text-align: center;
-  font-family: sans-serif;
+:root {
+  --primary-accent: #4285F4;
+  --background: #F5F5F5;
+  --text-color: #202124;
+  --editor-background: #2A2B32;
+  --error-color: #EA4335;
+  --success-color: #34A853;
+  --font-ui: 'Inter', sans-serif;
+  --font-code: 'Fira Code', monospace;
 }
 
-h1, h2, h3 {
-  color: #333;
+body {
+  background-color: var(--background);
+  color: var(--text-color);
+  font-family: var(--font-ui);
+  margin: 0;
+  padding: 0;
+}
+
+.App {
+  text-align: center;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-ui);
+}
+
+pre, code {
+  font-family: var(--font-code);
 }
 
 button {
-  background-color: #4CAF50;
+  background-color: var(--primary-accent);
   border: none;
   color: white;
   padding: 10px 20px;
@@ -19,37 +41,198 @@ button {
   margin: 4px 2px;
   cursor: pointer;
   border-radius: 8px;
+  font-family: var(--font-ui);
 }
 
-input[type="text"], input[type="password"], textarea {
+button:hover {
+  opacity: 0.9;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   width: 100%;
-  padding: 12px 20px;
-  margin: 8px 0;
-  display: inline-block;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  box-sizing: border-box;
 }
 
-ul {
-  list-style-type: none;
-  padding: 0;
+.main-content {
+  flex-grow: 1;
+  display: flex;
+  overflow: hidden;
 }
 
-li {
-  cursor: pointer;
+.code-editor-container {
+  flex-grow: 1;
+  background-color: var(--editor-background);
+  color: #fff;
+  padding: 1rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar {
+  width: 300px;
+  background-color: #fff;
+  border-left: 1px solid #ddd;
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.participant-gallery {
+  display: flex;
+  justify-content: center;
+  background-color: #fff;
   padding: 10px;
+  border-top: 1px solid #ddd;
+  overflow-x: auto;
+}
+
+.participant-tile {
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 0 5px;
+  cursor: pointer;
+  text-align: center;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.participant-tile img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.participant-tile.active {
+  border-color: var(--primary-accent);
+  box-shadow: 0 0 8px var(--primary-accent);
+}
+
+.participant-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.code-preview {
+    border: 1px solid #444;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.status-indicator {
+  height: 10px;
+  width: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-indicator.active { background-color: var(--primary-accent); }
+.status-indicator.correct { background-color: var(--success-color); }
+.status-indicator.error { background-color: var(--error-color); }
+.status-indicator.submitted { background-color: #fbbc05; }
+
+.task-card {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  background-color: #fff;
+  border-bottom: 1px solid #ddd;
+  height: 60px;
+}
+
+.app-header h1 {
+  font-size: 1.5rem;
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.5rem;
+  color: #5f6368;
+}
+
+.placeholder-view {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #999;
+}
+
+.task-assignment textarea {
+  width: 100%;
+  min-height: 100px;
+  border-radius: 8px;
   border: 1px solid #ddd;
-  margin-top: -1px; /* Prevent double borders */
-  background-color: #f6f6f6;
+  padding: 10px;
+  font-family: var(--font-ui);
 }
 
-li:hover {
-  background-color: #eee;
+.task-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.learner-page-container {
-  -webkit-user-select: none; /* Safari */
-  -ms-user-select: none; /* IE 10 and IE 11 */
-  user-select: none; /* Standard syntax */
+.learner-controls button {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.control-button.kick { background-color: #f4b400; }
+.control-button.ban { background-color: var(--error-color); }
+
+.learner-page .task-and-editor {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.evaluation-panel {
+  width: 350px;
+  padding: 20px;
+  background: #fff;
+  border-left: 1px solid #ddd;
+  position: relative;
+}
+
+.evaluation-panel.success { border-left: 5px solid var(--success-color); }
+.evaluation-panel.error { border-left: 5px solid var(--error-color); }
+
+.close-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+}
+
+.error-log {
+  background: var(--editor-background);
+  color: #fff;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
 }
