@@ -66,10 +66,34 @@
 }
 
 .evaluation-panel {
-    width: 300px;
-    padding: 1rem;
-    background-color: #f9f9f9;
+    width: 400px;
+    padding: 2rem;
+    background-color: var(--white);
     border-left: 1px solid var(--input-border-color);
+    box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+.evaluation-panel.success { border-left: 5px solid var(--success-green); }
+.evaluation-panel.warning { border-left: 5px solid var(--submitted-yellow); }
+.evaluation-panel.error { border-left: 5px solid var(--error-red); }
+
+.evaluation-panel h3 {
+    font-size: 1.4rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-color);
+}
+
+.score-display {
+    font-size: 3rem;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.score-display .score {
+    font-size: 4rem;
 }
 
 .close-panel {
@@ -78,4 +102,36 @@
     font-size: 1.5rem;
     cursor: pointer;
     float: right;
+}
+.countdown-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    color: white;
+    text-align: center;
+}
+
+.countdown-content h2 {
+    font-size: 3rem;
+    margin-bottom: 20px;
+}
+
+.countdown-content .task-preview {
+    font-size: 1.5rem;
+    margin-bottom: 40px;
+    max-width: 80%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.countdown-timer {
+    font-size: 6rem;
+    font-weight: bold;
 }

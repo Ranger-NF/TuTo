@@ -3,6 +3,7 @@ import { useParams, useLocation } from 'react-router-dom';
 import useWebSocket from '../hooks/useWebSocket';
 import Editor from '@monaco-editor/react';
 import { FaPaperPlane, FaTimes } from 'react-icons/fa';
+import Confetti from 'react-confetti';
 import './LearnerPage.css';
 
 const LearnerPage = () => {
@@ -19,6 +20,9 @@ const LearnerPage = () => {
     const [isEditorReadOnly, setEditorReadOnly] = useState(true);
     const [language, setLanguage] = useState('javascript');
     const [statusMessage, setStatusMessage] = useState('Waiting for host to start the session...');
+    const [timeRemaining, setTimeRemaining] = useState(null);
+    const [showFinalLeaderboard, setShowFinalLeaderboard] = useState(false);
+    const [finalLeaderboard, setFinalLeaderboard] = useState([]);
 
 
     useEffect(() => {
@@ -28,6 +32,9 @@ const LearnerPage = () => {
     }, [isConnected, sessionId, name, sendMessage]);
 
     const [submittedTask, setSubmittedTask] = useState(null);
+
+
+    const [countdown, setCountdown] = useState(null);
 
 
     useEffect(() => {
@@ -49,6 +56,24 @@ const LearnerPage = () => {
                     setEditorReadOnly(false); // Re-enable editor for new task
                     setSubmittedTask(null); // Reset submitted task
                     break;
+                case 'quizRoundStarted':
+                    setTimeRemaining(lastMessage.payload.timeLimit);
+                    setCountdown(3);
+                    break;
+                case 'timerUpdate':
+                    setTimeRemaining(lastMessage.payload.timeRemaining);
+                    break;
+                case 'quizRoundFinished':
+                    setTimeRemaining(0);
+                    break;
+                case 'submissionAcknowledged':
+                    setStatusMessage('Code submitted! Waiting for evaluation...');
+                    break;
+                case 'finalLeaderboard':
+                    setFinalLeaderboard(lastMessage.payload.leaderboard);
+                    setShowFinalLeaderboard(true);
+                    setTimeRemaining(null);
+                    break;
                 case 'evaluationResult':
                     setEvaluation(lastMessage.payload);
                     setShowEvaluation(true);
@@ -61,11 +86,35 @@ const LearnerPage = () => {
                     setEditorReadOnly(true);
                     setStatusMessage('Coding is disabled by the host.');
                     break;
+                case 'sessionReset':
+                    setCode('// Start coding here...');
+                    setTask('');
+                    setEvaluation(null);
+                    setShowEvaluation(false);
+                    setEditorReadOnly(true);
+                    setStatusMessage('The session has been reset by the host.');
+                    setTimeRemaining(null);
+                    setShowFinalLeaderboard(false);
+                    setFinalLeaderboard([]);
+                    break;
                 default:
                     break;
             }
         }
-    }, [messages]);
+    }, [messages, sessionId, name, sendMessage]);
+
+    useEffect(() => {
+        if (countdown === null) return;
+
+        if (countdown > 0) {
+            const timerId = setTimeout(() => setCountdown(countdown - 1), 1000);
+            return () => clearTimeout(timerId);
+        } else if (countdown === 0) {
+            setCountdown(null);
+            setEditorReadOnly(false);
+            setStatusMessage('');
+        }
+    }, [countdown]);
 
     const handleCodeChange = (newCode) => {
         setCode(newCode);
@@ -78,10 +127,20 @@ const LearnerPage = () => {
         sendMessage({ type: 'submitCode', payload: { sessionId, learnerId, code, task } });
         setSubmittedTask(task);
         setEditorReadOnly(true);
+        setStatusMessage('Code submitted! Waiting for evaluation...');
     };
 
     return (
         <div className="container learner-page">
+            {countdown !== null && countdown > 0 && (
+                <div className="countdown-overlay">
+                    <div className="countdown-content">
+                        <h2>Get Ready!</h2>
+                        <p className="task-preview">{task}</p>
+                        <div className="countdown-timer">{countdown}</div>
+                    </div>
+                </div>
+            )}
             <header className="app-header">
                 <div className="user-info">
                     {gravatar && <img src={gravatar} alt={name} className="avatar" />}
@@ -90,6 +149,11 @@ const LearnerPage = () => {
                 <button onClick={handleSubmit} className="submit-button" disabled={isEditorReadOnly}>
                     <FaPaperPlane /> Submit for Evaluation
                 </button>
+                {timeRemaining !== null && (
+                    <div className="timer">
+                        Time Remaining: {Math.round(timeRemaining)}s
+                    </div>
+                )}
             </header>
             <div className="main-content">
                 <div className="task-and-editor">
@@ -119,21 +183,41 @@ const LearnerPage = () => {
                     </div>
                 </div>
                 {showEvaluation && (
-                    <div className={`evaluation-panel ${evaluation && (evaluation.isCorrect ? 'success' : 'error')}`}>
+                    <div className={`evaluation-panel ${evaluation && (evaluation.score > 7 ? 'success' : (evaluation.score > 4 ? 'warning' : 'error'))}`}>
                         <button className="close-panel" onClick={() => setShowEvaluation(false)}>
                             <FaTimes />
                         </button>
                         <h3>Evaluation Result</h3>
                         {evaluation && (
                             <>
-                                <p><strong>Score:</strong> {evaluation.score}</p>
-                                <p><strong>Feedback:</strong> {evaluation.feedback}</p>
+                                <div className="score-display">
+                                    <span className="score">{evaluation.score}</span>/10
+                                </div>
+                                <p><strong>Feedback:</strong></p>
+                                <p>{evaluation.feedback}</p>
                                 {evaluation.error && <pre className="error-log">{evaluation.error}</pre>}
                             </>
                         )}
                     </div>
                 )}
             </div>
+            {showFinalLeaderboard && (
+                <div className="final-leaderboard-overlay">
+                    <Confetti />
+                    <div className="final-leaderboard">
+                        <h2>Final Leaderboard</h2>
+                        <ol>
+                            {finalLeaderboard.map((entry, index) => (
+                                <li key={index}>
+                                    {entry.name} - Score: {entry.score}
+                                    {entry.speed !== 'N/A' && `, Time: ${entry.speed}s`}
+                                </li>
+                            ))}
+                        </ol>
+                        <button onClick={() => setShowFinalLeaderboard(false)}>Close</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -3,7 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import useWebSocket from '../hooks/useWebSocket';
 import Editor from '@monaco-editor/react';
 import Leaderboard from '../components/Leaderboard';
-import { FaCrown, FaFileExport, FaFileImport, FaPaperPlane, FaTimes, FaUserSlash } from 'react-icons/fa';
+import { FaCrown } from 'react-icons/fa';
 import './MentorDashboard.css';
 
 const MentorDashboard = () => {
@@ -15,13 +15,16 @@ const MentorDashboard = () => {
     const [learners, setLearners] = useState([]);
     const [selectedLearnerId, setSelectedLearnerId] = useState(null);
     const selectedLearner = learners.find(l => l.id === selectedLearnerId);
-    const [task, setTask] = useState('');
     const [leaderboard, setLeaderboard] = useState([]);
+    const [activeTask, setActiveTask] = useState('');
     const [submittedCode, setSubmittedCode] = useState(new Set());
     const [displaySessionId, setDisplaySessionId] = useState(paramSessionId);
-    const [language, setLanguage] = useState('javascript');
-    const [activeTask, setActiveTask] = useState(null);
-    const [isCodingEnabled, setIsCodingEnabled] = useState(true);
+    const [isCodingEnabled, setIsCodingEnabled] = useState(false);
+    const [quizState, setQuizState] = useState('idle');
+    const [timeRemaining, setTimeRemaining] = useState(null);
+    const [taskContent, setTaskContent] = useState('');
+    const [taskLanguage, setTaskLanguage] = useState('javascript');
+    const [taskTimeLimit, setTaskTimeLimit] = useState(300);
 
 
     useEffect(() => {
@@ -47,6 +50,12 @@ const MentorDashboard = () => {
                     setLearners(lastMessage.payload.learners || []);
                     setLeaderboard(lastMessage.payload.leaderboard || []);
                     setIsCodingEnabled(lastMessage.payload.isCodingEnabled);
+                    if (lastMessage.payload.currentTask) {
+                        setActiveTask(lastMessage.payload.currentTask.content);
+                    }
+                    if (lastMessage.payload.quizState) {
+                        setQuizState(lastMessage.payload.quizState);
+                    }
                     break;
                 case 'codingToggled':
                     setIsCodingEnabled(lastMessage.payload.isCodingEnabled);
@@ -82,36 +91,71 @@ const MentorDashboard = () => {
                 case 'evaluationResult':
                      setLearners(prev => prev.map(l => l.id === lastMessage.payload.learnerId ? { ...l, status: lastMessage.payload.isCorrect ? 'correct' : 'error' } : l));
                      break;
+               case 'quizRoundStartedConfirmation':
+                   setQuizState('running');
+                   break;
+               case 'quizRoundFinished':
+                   setQuizState('finished');
+                   setTimeRemaining(0);
+                   break;
+                case 'timerUpdate':
+                    setTimeRemaining(lastMessage.payload.timeRemaining);
+                    break;
+               case 'finalLeaderboard':
+                   setLeaderboard(lastMessage.payload.leaderboard);
+                   setQuizState('finished');
+                   setTimeRemaining(null);
+                   // Trigger confetti
+                   break;
                 default:
                     break;
             }
         }
     }, [messages, secret, sendMessage, navigate, selectedLearnerId]);
 
-    const handleAssignTask = (all = false) => {
-        const taskId = `task-${Date.now()}`;
-        const learnerIds = all ? learners.map(l => l.id) : (selectedLearner ? [selectedLearner.id] : []);
-        if (learnerIds.length > 0) {
-            sendMessage({ type: 'assignTask', payload: { sessionId: displaySessionId, taskId, content: task, learnerIds, secret, language } });
-            setActiveTask(taskId);
+    const handleAssignTask = () => {
+        if (!taskContent.trim()) {
+            alert('Please enter a task.');
+            return;
+        }
+        const learnerIds = learners.map(l => l.id);
+        if (learnerIds.length === 0) {
+            alert('No learners in the session to assign the task to.');
+            return;
+        }
+        const taskId = `task-${new Date().getTime()}`;
+        sendMessage({
+            type: 'assignTask',
+            payload: {
+                sessionId: displaySessionId,
+                taskId,
+                content: taskContent,
+                learnerIds,
+                secret,
+                language: taskLanguage,
+                timeLimit: parseInt(taskTimeLimit, 10)
+            }
+        });
+    };
+
+    const handleStartRound = () => {
+        sendMessage({ type: 'startQuizRound', payload: { sessionId: displaySessionId, secret } });
+    };
+
+    const handleStopRound = () => {
+        sendMessage({ type: 'stopQuizRound', payload: { sessionId: displaySessionId, secret } });
+    };
+
+    const handleToggleRound = () => {
+        if (quizState === 'running') {
+            handleStopRound();
+        } else {
+            handleStartRound();
         }
     };
 
-    const handleEvaluateCode = () => {
-        if (selectedLearner) {
-            sendMessage({ type: 'evaluateCode', payload: { sessionId: displaySessionId, learnerId: selectedLearner.id, secret } });
-        }
-    };
-
-    const handleImport = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                sendMessage({ type: 'importSession', payload: { sessionId: displaySessionId, fileContent: e.target.result, secret } });
-            };
-            reader.readAsText(file);
-        }
+    const handleResetSession = () => {
+        sendMessage({ type: 'resetSession', payload: { sessionId: displaySessionId, secret } });
     };
 
     const getStatusIndicator = (learner) => {
@@ -129,15 +173,11 @@ const MentorDashboard = () => {
                 <h1>Mentor Dashboard</h1>
                 <div className="session-info">
                     <span>Session ID: {displaySessionId}</span>
-                </div>
-                <div className="header-controls">
-                    <label htmlFor="import-session" className="icon-button" title="Import Session">
-                        <FaFileImport />
-                    </label>
-                    <input id="import-session" type="file" onChange={handleImport} style={{ display: 'none' }} />
-                    <button className="icon-button" onClick={() => sendMessage({ type: 'exportSession', payload: { sessionId: displaySessionId, secret } })} title="Export Session">
-                        <FaFileExport />
-                    </button>
+                    {timeRemaining !== null && (
+                        <div className="timer">
+                            Time Remaining: {Math.round(timeRemaining)}s
+                        </div>
+                    )}
                 </div>
             </header>
             <div className="main-content">
@@ -148,7 +188,7 @@ const MentorDashboard = () => {
                     {selectedLearner ? (
                         <Editor
                             height="100%"
-                            language={language}
+                            language={selectedLearner.language || 'javascript'}
                             theme="vs-dark"
                             value={selectedLearner.code}
                             options={{ readOnly: true, minimap: { enabled: false } }}
@@ -163,44 +203,42 @@ const MentorDashboard = () => {
                     )}
                 </div>
                 <div className="sidebar right-sidebar">
-                    <div className="task-assignment">
-                        <h3>Assign Task</h3>
-                        <textarea value={task} onChange={e => setTask(e.target.value)} placeholder="Describe the task for the learners..." />
-                        <div className="language-selector">
-                            <label htmlFor="language">Language:</label>
-                            <select id="language" value={language} onChange={e => setLanguage(e.target.value)}>
-                                <option value="javascript">JavaScript</option>
-                                <option value="python">Python</option>
-                                <option value="html">HTML</option>
-                                <option value="css">CSS</option>
-                            </select>
-                        </div>
-                        <div className="task-buttons">
-                            <button onClick={() => handleAssignTask()} disabled={!selectedLearner || !task.trim() || activeTask}>
-                                <FaPaperPlane /> Assign to Selected
-                            </button>
-                            <button onClick={() => handleAssignTask(true)} disabled={!task.trim() || activeTask}>
-                                <FaPaperPlane /> Assign to All
-                            </button>
-                        </div>
-                    </div>
-                    {selectedLearner && (
-                        <div className="learner-controls">
-                            <h3>Controls for {selectedLearner.name}</h3>
-                            <button onClick={handleEvaluateCode}>Evaluate Code</button>
-                            <button className="control-button kick" onClick={() => sendMessage({ type: 'kickParticipant', payload: { sessionId: displaySessionId, participantId: selectedLearner.id, secret } })}>
-                                <FaTimes /> Kick
-                            </button>
-                            <button className="control-button ban" onClick={() => sendMessage({ type: 'banParticipant', payload: { sessionId: displaySessionId, participantId: selectedLearner.id, secret } })}>
-                                <FaUserSlash /> Ban
-                            </button>
+                    {activeTask && (
+                        <div className="current-task-display">
+                            <h3>Current Task</h3>
+                            <p>{activeTask}</p>
                         </div>
                     )}
                     <div className="global-controls">
                         <h3>Global Controls</h3>
-                        <button onClick={() => sendMessage({ type: 'toggleCoding', payload: { sessionId: displaySessionId, secret } })}>
-                            {isCodingEnabled ? 'Disable' : 'Enable'} Coding for All
-                        </button>
+                        <div className="task-controls">
+                            <textarea
+                                value={taskContent}
+                                onChange={(e) => setTaskContent(e.target.value)}
+                                placeholder="Enter task description..."
+                            />
+                            <input
+                                type="text"
+                                value={taskLanguage}
+                                onChange={(e) => setTaskLanguage(e.target.value)}
+                                placeholder="Language (e.g., javascript)"
+                            />
+                            <input
+                                type="number"
+                                value={taskTimeLimit}
+                                onChange={(e) => setTaskTimeLimit(e.target.value)}
+                                placeholder="Time limit in seconds"
+                            />
+                            <button onClick={handleAssignTask}>Assign Task</button>
+                        </div>
+                        <div className="quiz-controls">
+                            <button onClick={handleToggleRound} className={quizState === 'running' ? "stop-round-btn" : "start-round-btn"}>
+                                {quizState === 'running' ? 'Stop Round' : 'Start Round'}
+                            </button>
+                            <button onClick={handleResetSession} className="reset-session-btn">
+                                Reset
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
