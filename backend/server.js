@@ -124,23 +124,24 @@ wss.on('connection', ws => {
                 break;
             }
             case 'assignTask': {
-                const { sessionId, taskId, content, learnerIds, secret } = payload;
+                const { sessionId, taskId, content, learnerIds, secret, language } = payload;
                 if (secret !== process.env.MENTOR_SECRET_KEY) { // Simple shared secret
                     ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized: Invalid secret' } }));
                     return;
                 }
                 const session = sessions.get(sessionId);
                 if (session && session.mentorWs === ws) {
-                    session.tasks.set(taskId, { content, assignedTo: learnerIds });
+                    session.tasks.set(taskId, { content, assignedTo: learnerIds, language });
                     learnerIds.forEach(id => {
                         const learner = session.learners.get(id);
                         if (learner) {
                             learner.task = content; // Assign task content to learner
-                            learner.ws.send(JSON.stringify({ type: 'taskAssigned', payload: { taskId, content } }));
+                            learner.language = language;
+                            learner.ws.send(JSON.stringify({ type: 'taskAssigned', payload: { taskId, content, language } }));
                         }
                     });
                     // Notify mentor dashboard
-                    ws.send(JSON.stringify({ type: 'taskAssignedConfirmation', payload: { taskId, content, learnerIds } }));
+                    ws.send(JSON.stringify({ type: 'taskAssignedConfirmation', payload: { taskId, content, learnerIds, language } }));
                 }
                 break;
             }
@@ -248,6 +249,30 @@ wss.on('connection', ws => {
                 } catch (error) {
                     console.error('Failed to import session:', error);
                     ws.send(JSON.stringify({ type: 'error', payload: { message: 'Failed to import session' } }));
+                }
+                break;
+            }
+            case 'startCoding': {
+                const { sessionId, learnerId, secret } = payload;
+                if (secret !== process.env.MENTOR_SECRET_KEY) return;
+                const session = sessions.get(sessionId);
+                if (session && session.mentorWs === ws) {
+                    const learner = session.learners.get(learnerId);
+                    if (learner) {
+                        learner.ws.send(JSON.stringify({ type: 'codingEnabled' }));
+                    }
+                }
+                break;
+            }
+            case 'stopCoding': {
+                const { sessionId, learnerId, secret } = payload;
+                if (secret !== process.env.MENTOR_SECRET_KEY) return;
+                const session = sessions.get(sessionId);
+                if (session && session.mentorWs === ws) {
+                    const learner = session.learners.get(learnerId);
+                    if (learner) {
+                        learner.ws.send(JSON.stringify({ type: 'codingDisabled' }));
+                    }
                 }
                 break;
             }
